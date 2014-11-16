@@ -543,6 +543,19 @@ var JSHINT = (function () {
     };
 
     w.reason = supplant(msg.desc, w);
+
+    // HACK
+    if (code === 'W033') {
+      // add a semicolone where Jshint would normally
+      // complain about a missing semicolon.
+      JSHINT.addSemicolon(l, ch)
+    }
+    if (code === 'W032') {
+      // remove unecessary semicolons.
+      JSHINT.removeSemicolon(l, ch)
+    }
+    return;
+
     JSHINT.errors.push(w);
 
     removeIgnoredMessages();
@@ -1653,6 +1666,39 @@ var JSHINT = (function () {
         }
       }
     } else {
+      // HACK
+      if (JSHINT.asr) {
+        // remove the god-damn semicolon.
+        var next = peek()
+        if (next.type === '(end)' ||
+            next.type === '(endline)' ||
+            next.value === ';') {
+          JSHINT.removeSemicolon(
+            state.tokens.curr.line,
+            state.tokens.curr.character
+          )
+          // peek until it's not newline, and look at the first char.
+          // if it's one of [ ( / + - , we need to add a semicolon.
+          if (next.type === '(endline)') {
+            var i = 1
+            while (peek(i).type === '(endline)') {
+              i++
+            }
+            var p = peek(i)
+            if (p.value === '(' ||
+                p.value === '[' ||
+                p.value === '+' ||
+                p.value === '++' ||
+                p.value === '-' ||
+                p.value === '--' ||
+                p.type === '(regexp)') {
+              JSHINT.addSemicolon(p.line, p.from)
+            }
+          }
+        }
+      } else {
+        // TODO
+      }
       advance(";");
     }
   }
@@ -1814,12 +1860,24 @@ var JSHINT = (function () {
           return;
         } else if (!state.option.asi || pn.value === "(") {
           // string -> ( is not a valid production
-          warning("W033", state.tokens.next);
+          // HACK
+          // fix "use strict" insertion position
+          var n = state.tokens.next
+          n.from += n.value.length + 2
+          warning("W033", n)
         }
       } else if (p.id === "." || p.id === "[") {
         return;
       } else if (p.id !== ";") {
-        warning("W033", p);
+        // HACK
+        // fix "use strict" followed by other stuff
+        var n = state.tokens.next
+        n.from += n.value.length + 2
+        warning("W033", n)
+      } else if (JSHINT.asr) {
+        // HACK
+        // remove semi after "use strict"
+        JSHINT.removeSemicolon(p.line, p.from)
       }
 
       advance();
@@ -3127,20 +3185,6 @@ var JSHINT = (function () {
     }
   }
 
-  /**
-   * @param {object} props Collection of property descriptors for a given
-   *                       object.
-   */
-  function checkProperties(props) {
-    // Check for lonely setters if in the ES5 mode.
-    if (state.option.inES5()) {
-      for (var name in props) {
-        if (_.has(props, name) && props[name].setter && !props[name].getter) {
-          warning("W078", props[name].setterToken);
-        }
-      }
-    }
-  }
 
   (function (x) {
     x.nud = function () {
@@ -3183,7 +3227,7 @@ var JSHINT = (function () {
             if (nextVal === "get") {
               saveGetter(props, i);
             } else {
-              saveSetter(props, i, state.tokens.curr);
+              saveSetter(props, i, state.tokens.next);
             }
           }
 
@@ -3257,8 +3301,14 @@ var JSHINT = (function () {
       }
       advance("}", this);
 
-      checkProperties(props);
-
+      // Check for lonely setters if in the ES5 mode.
+      if (state.option.inES5()) {
+        for (var name in props) {
+          if (_.has(props, name) && props[name].setter && !props[name].getter) {
+            warning("W078", props[name].setterToken);
+          }
+        }
+      }
       return this;
     };
     x.fud = function () {
@@ -3670,8 +3720,6 @@ var JSHINT = (function () {
 
       doFunction(!computed && propertyName(name), c, false, null);
     }
-
-    checkProperties(props);
   }
 
   blockstmt("function", function () {
@@ -4885,6 +4933,12 @@ var JSHINT = (function () {
 
   // The actual JSHINT function itself.
   var itself = function (s, o, g) {
+
+    // HACK
+    // if we are removing semicolons we want the ASI option
+    // to be true
+    o = { asi: JSHINT.asr }
+
     var i, k, x, reIgnoreStr, reIgnore;
     var optionKeys;
     var newOptionObj = {};
