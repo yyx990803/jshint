@@ -1672,6 +1672,7 @@ var JSHINT = (function () {
         var next = peek()
         if (next.type === '(end)' ||
             next.type === '(endline)' ||
+            next.value === '}' ||
             next.value === ';') {
           JSHINT.removeSemicolon(
             state.tokens.curr.line,
