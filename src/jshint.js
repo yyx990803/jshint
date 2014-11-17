@@ -1698,7 +1698,19 @@ var JSHINT = (function () {
           }
         }
       } else {
-        // TODO
+        if (state.tokens.next.line !== state.tokens.curr.line) {
+          // cross-line semicolons, possibly have white space & comments
+          // in between. move the semicolon up to the same line where the
+          // statement ends.
+          JSHINT.addSemicolon(
+            state.tokens.curr.line,
+            state.tokens.curr.character
+          )
+          JSHINT.removeSemicolon(
+            state.tokens.next.line,
+            state.tokens.next.from
+          )
+        }
       }
       advance(";");
     }
